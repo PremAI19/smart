@@ -1,8 +1,12 @@
 import openai
 import pandas as pd
+from dotenv import load_dotenv
+import os
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-  # Replace with your key
+# Load variables from .env file
+load_dotenv()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Loaded from environment
 
 def load_data(path="data/cleaned_statements.csv"):
     """Load processed transaction data"""
