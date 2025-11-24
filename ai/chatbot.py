@@ -3,10 +3,10 @@ import pandas as pd
 from dotenv import load_dotenv
 import os
 
-# Load variables from .env file
+# Load environment variables
 load_dotenv()
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Loaded from environment
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
 def load_data(path="data/cleaned_statements.csv"):
     """Load processed transaction data"""
@@ -36,3 +36,21 @@ def generate_response(user_input, df):
         messages=[{"role": "user", "content": prompt}]
     )
     return response['choices'][0]['message']['content']
+
+# ==============================
+# Run chatbot in terminal
+# ==============================
+if __name__ == "__main__":
+    df = load_data()
+    print("Smart Personal Finance Chatbot is running! Type 'exit' to quit.")
+    
+    while True:
+        user_input = input("You: ")
+        if user_input.lower() in ["exit", "quit"]:
+            print("Goodbye!")
+            break
+        try:
+            answer = generate_response(user_input, df)
+            print("Bot:", answer)
+        except Exception as e:
+            print("Error:", e)
