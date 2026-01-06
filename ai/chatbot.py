@@ -1,6 +1,7 @@
-import pandas as pd
-from dotenv import load_dotenv
 import os
+import pandas as pd
+import pdfplumber
+from dotenv import load_dotenv
 from groq import Groq
 
 # ==============================
@@ -8,51 +9,78 @@ from groq import Groq
 # ==============================
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+API_KEY = os.getenv("GROQ_API_KEY")
+MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
-if not GROQ_API_KEY:
-    raise ValueError("Groq API key not found! Please add it to .env")
+if not API_KEY:
+    raise ValueError("GROQ_API_KEY not found in .env")
 
-# ==============================
-# Create Groq client
-# ==============================
-client = Groq(api_key=GROQ_API_KEY)
+client = Groq(api_key=API_KEY)
 
 # ==============================
-# Data loading
+# Load data directly from PDF
 # ==============================
-def load_data(path="data/cleaned_statements.csv"):
-    """Load processed transaction data"""
-    try:
-        return pd.read_csv(path)
-    except Exception as e:
-        print("Failed to load data:", e)
+def load_data(path="data/sample_statements.pdf"):
+    if not os.path.exists(path):
+        print(f"⚠️ PDF not found: {path}")
         return pd.DataFrame()
 
+    rows = []
+
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            table = page.extract_table()
+            if table and len(table) > 1:
+                rows.extend(table[1:])  # skip header row
+
+    if not rows:
+        print("⚠️ No tables found in PDF")
+        return pd.DataFrame()
+
+    # Adjust columns if your PDF differs
+    df = pd.DataFrame(rows, columns=["date", "description", "amount"])
+
+    # Clean amount column
+    df["amount"] = (
+        df["amount"]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .str.replace("₹", "", regex=False)
+        .str.replace("$", "", regex=False)
+    )
+    df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
+
+    return df
+
 # ==============================
-# LLM response generation
+# Generate LLM response
 # ==============================
 def generate_response(user_input, df):
-    """Use Groq LLM to answer user questions about expenses"""
+    summary = "No financial data available."
 
-    summary = ""
     if not df.empty and "amount" in df.columns:
         total_spent = df[df["amount"] < 0]["amount"].sum()
         total_income = df[df["amount"] > 0]["amount"].sum()
+
         summary = (
-            f"Your total income is {total_income:.2f} "
-            f"and total spending is {abs(total_spent):.2f}."
+            f"Total income: {total_income:.2f}. "
+            f"Total spending: {abs(total_spent):.2f}."
         )
 
     prompt = f"""
     You are a smart personal finance assistant.
-    Use this data summary: {summary}
-    User asked: {user_input}
-    Provide a helpful, concise financial insight.
+
+    Financial summary:
+    {summary}
+
+    User question:
+    {user_input}
+
+    Give a clear, practical financial insight.
     """
 
     response = client.chat.completions.create(
-        model="llama3-70b-8192",
+        model=MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
 
@@ -63,12 +91,14 @@ def generate_response(user_input, df):
 # ==============================
 if __name__ == "__main__":
     df = load_data()
-    print("Smart Personal Finance Chatbot is running! Type 'exit' to quit.")
+
+    print("💰 Personal Finance Chatbot (PDF-based)")
+    print("Type 'exit' to quit\n")
 
     while True:
         user_input = input("You: ")
-        if user_input.lower() in ["exit", "quit"]:
-            print("Goodbye!")
+        if user_input.lower() in ("exit", "quit"):
+            print("Goodbye 👋")
             break
 
         try:
