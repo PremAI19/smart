@@ -1,14 +1,24 @@
 import pandas as pd
 from dotenv import load_dotenv
 import os
-from openai import OpenAI
+#from openai import OpenAI
+from groq import Groq
 
 # Load environment variables
-load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+#load_dotenv()
+#OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not OPENAI_API_KEY:
-    raise ValueError("OpenAI API key not found! Please add it to .env")
+#if not OPENAI_API_KEY:
+#    raise ValueError("OpenAI API key not found! Please add it to .env")
+# Load environment variables
+load_dotenv()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+if not GROQ_API_KEY:
+    raise ValueError("Groq API key not found! Please add it to .env")
+
+client = Groq(api_key=GROQ_API_KEY)
 
 # Create OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
