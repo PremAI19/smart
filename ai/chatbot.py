@@ -46,7 +46,7 @@ def generate_response(user_input, df):
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=200  # 🚨 LIMIT OUTPUT
+        max_tokens=500  # 🚨 LIMIT OUTPUT
     )
 
     return response.choices[0].message.content
