@@ -1,3 +1,4 @@
+print("🚀 chatbot.py started")
 import openai
 import pandas as pd
 from dotenv import load_dotenv
@@ -6,7 +7,13 @@ import os
 # Load variables from .env file
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Loaded from environment
+API_KEY = os.getenv("GROQ_API_KEY")
+MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+
+if not API_KEY:
+    raise ValueError("GROQ_API_KEY not found in .env")
+
+client = Groq(api_key=API_KEY)
 
 def load_data(path="data/cleaned_statements.csv"):
     """Load processed transaction data"""
