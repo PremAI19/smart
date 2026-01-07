@@ -17,22 +17,36 @@ def load_data(path="data/cleaned_statements.csv"):
         return pd.DataFrame()
 
 def generate_response(user_input, df):
-    """Use GPT to answer user questions about expenses"""
-    summary = ""
-    if not df.empty:
-        total_spent = df['amount'][df['amount'] < 0].sum()
-        total_income = df['amount'][df['amount'] > 0].sum()
-        summary = f"Your total income is {total_income:.2f} and total spending is {abs(total_spent):.2f}."
+    if df.empty or "amount" not in df.columns:
+        summary = "No financial data available."
+    else:
+        # Aggregate only (VERY important)
+        total_spent = df[df["amount"] < 0]["amount"].sum()
+        total_income = df[df["amount"] > 0]["amount"].sum()
+        txn_count = len(df)
+
+        summary = (
+            f"Total transactions: {txn_count}. "
+            f"Total income: {total_income:.2f}. "
+            f"Total spending: {abs(total_spent):.2f}."
+        )
 
     prompt = f"""
-    You are a smart personal finance assistant. 
-    Use this data summary: {summary}
-    User asked: {user_input}
-    Provide a helpful, concise financial insight.
+    You are a smart personal finance assistant.
+
+    Financial summary (aggregated, not raw data):
+    {summary}
+
+    User question:
+    {user_input}
+
+    Give a concise, practical financial insight (max 5 lines).
     """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=200  # 🚨 LIMIT OUTPUT
     )
-    return response['choices'][0]['message']['content']
+
+    return response.choices[0].message.content
