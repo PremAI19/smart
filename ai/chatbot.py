@@ -1,8 +1,8 @@
 print("🚀 chatbot.py started")
-import openai
 import pandas as pd
 from dotenv import load_dotenv
 import os
+from groq import Groq
 
 # Load variables from .env file
 load_dotenv()
