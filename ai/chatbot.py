@@ -57,3 +57,11 @@ def generate_response(user_input, df):
     )
 
     return response.choices[0].message.content
+    print("🔥 REACHED END OF FILE")
+
+if __name__ == "__main__":
+    print("✅ MAIN BLOCK RUNNING")
+    while True:
+        text = input("You: ")
+        print("You typed:", text)
+        
