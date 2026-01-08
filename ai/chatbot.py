@@ -1,9 +1,9 @@
 print("🚀 chatbot.py started")
 
-import pandas as pd
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 from groq import Groq
+from pypdf import PdfReader
 
 # ==============================
 # Load environment variables
@@ -18,45 +18,47 @@ if not API_KEY:
 
 client = Groq(api_key=API_KEY)
 
+PDF_PATH = "data/sample_statements.pdf"
+MAX_CHARS = 4000  # 🚨 prevent memory kill
+
 # ==============================
-# Load financial data
+# Read PDF safely
 # ==============================
-def load_data(path="data/cleaned_statements.csv"):
+def read_pdf(path):
     try:
-        df = pd.read_csv(path)
-        print(f"📊 Loaded {len(df)} rows from {path}")
-        return df
+        reader = PdfReader(path)
+        text = ""
+
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+
+            if len(text) > MAX_CHARS:
+                break  # 🚨 VERY IMPORTANT
+
+        print(f"📄 PDF loaded ({len(text)} characters)")
+        return text.strip()
+
     except Exception as e:
-        print("⚠️ Failed to load data:", e)
-        return pd.DataFrame()
+        print("❌ Failed to read PDF:", e)
+        return ""
 
 # ==============================
 # Generate AI response
 # ==============================
-def generate_response(user_input, df):
-    if df.empty or "amount" not in df.columns:
-        summary = "No financial data available."
-    else:
-        total_spent = df[df["amount"] < 0]["amount"].sum()
-        total_income = df[df["amount"] > 0]["amount"].sum()
-        txn_count = len(df)
-
-        summary = (
-            f"Total transactions: {txn_count}. "
-            f"Total income: {total_income:.2f}. "
-            f"Total spending: {abs(total_spent):.2f}."
-        )
-
+def generate_response(user_input, pdf_text):
     prompt = f"""
 You are a smart personal finance assistant.
 
-Financial summary (aggregated, not raw data):
-{summary}
+Below is a PARTIAL bank statement extracted from a PDF.
+Summarize and infer insights — do NOT hallucinate numbers.
+
+PDF CONTENT:
+{pdf_text}
 
 User question:
 {user_input}
 
-Give a concise, practical financial insight (max 5 lines).
+Give practical financial advice (max 5 lines).
 """
 
     response = client.chat.completions.create(
@@ -72,10 +74,14 @@ Give a concise, practical financial insight (max 5 lines).
 # ==============================
 if __name__ == "__main__":
     print("✅ MAIN BLOCK RUNNING")
-    print("💰 Personal Finance Chatbot")
+    print("💰 Personal Finance Chatbot (PDF Based)")
     print("Type 'exit' to quit\n")
 
-    df = load_data()
+    pdf_text = read_pdf(PDF_PATH)
+
+    if not pdf_text:
+        print("❌ No PDF content loaded. Exiting.")
+        exit(1)
 
     while True:
         user_input = input("You: ")
@@ -85,7 +91,7 @@ if __name__ == "__main__":
             break
 
         try:
-            answer = generate_response(user_input, df)
+            answer = generate_response(user_input, pdf_text)
             print("Bot:", answer)
         except Exception as e:
             print("❌ Error:", e)
