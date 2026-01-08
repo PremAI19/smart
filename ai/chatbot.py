@@ -4,22 +4,31 @@ import os
 from dotenv import load_dotenv
 from groq import Groq
 from pypdf import PdfReader
+from collections import deque
+
+# ==============================
+# Config
+# ==============================
+PDF_PATH = "data/sample_statements.pdf"
+MAX_CHARS = 4500          # Prevent memory kill
+MAX_MEMORY_TURNS = 5      # Chat memory size
 
 # ==============================
 # Load environment variables
 # ==============================
 load_dotenv()
-
 API_KEY = os.getenv("GROQ_API_KEY")
 MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 if not API_KEY:
-    raise ValueError("❌ GROQ_API_KEY not found in .env")
+    raise ValueError("❌ GROQ_API_KEY not found")
 
 client = Groq(api_key=API_KEY)
 
-PDF_PATH = "data/sample_statements.pdf"
-MAX_CHARS = 4000  # 🚨 prevent memory kill
+# ==============================
+# Conversation Memory
+# ==============================
+chat_memory = deque(maxlen=MAX_MEMORY_TURNS)
 
 # ==============================
 # Read PDF safely
@@ -30,51 +39,73 @@ def read_pdf(path):
         text = ""
 
         for page in reader.pages:
-            text += page.extract_text() + "\n"
+            extracted = page.extract_text()
+            if extracted:
+                text += extracted + "\n"
 
             if len(text) > MAX_CHARS:
-                break  # 🚨 VERY IMPORTANT
+                break
 
         print(f"📄 PDF loaded ({len(text)} characters)")
         return text.strip()
 
     except Exception as e:
-        print("❌ Failed to read PDF:", e)
+        print("❌ PDF read failed:", e)
         return ""
 
 # ==============================
 # Generate AI response
 # ==============================
 def generate_response(user_input, pdf_text):
+    memory_context = ""
+    for turn in chat_memory:
+        memory_context += f"{turn}\n"
+
     prompt = f"""
 You are a smart personal finance assistant.
 
-Below is a PARTIAL bank statement extracted from a PDF.
-Summarize and infer insights — do NOT hallucinate numbers.
+You are analyzing BANK STATEMENT DATA extracted from a PDF.
+- Infer trends, not exact amounts
+- Identify monthly patterns
+- Detect changes over time
+- Be conservative (do NOT hallucinate numbers)
 
-PDF CONTENT:
+PDF CONTENT (partial):
 {pdf_text}
+
+Conversation memory:
+{memory_context}
 
 User question:
 {user_input}
 
-Give practical financial advice (max 5 lines).
+If asked about trends:
+- Mention months
+- Identify increase/decrease patterns
+- Suggest actions
+
+Answer in max 6 concise lines.
 """
 
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=300
+        max_tokens=350
     )
 
-    return response.choices[0].message.content
+    reply = response.choices[0].message.content
+
+    # Save memory
+    chat_memory.append(f"User: {user_input}")
+    chat_memory.append(f"Assistant: {reply}")
+
+    return reply
 
 # ==============================
-# Main chatbot loop
+# Main Loop
 # ==============================
 if __name__ == "__main__":
-    print("✅ MAIN BLOCK RUNNING")
-    print("💰 Personal Finance Chatbot (PDF Based)")
+    print("💰 Personal Finance Chatbot (PDF + Trends + Memory)")
     print("Type 'exit' to quit\n")
 
     pdf_text = read_pdf(PDF_PATH)
