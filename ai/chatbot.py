@@ -16,7 +16,7 @@ import pyttsx3
 PDF_PATH = "data/sample_statements.pdf"
 MAX_CHARS = 4500
 MAX_MEMORY_TURNS = 6
-USE_VOICE = True   # 🔊 Toggle voice on/off
+USE_VOICE = False  # Codespaces safe   # 🔊 Toggle voice on/off
 
 # ==============================
 # Load environment variables
