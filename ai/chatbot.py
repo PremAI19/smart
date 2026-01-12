@@ -1,169 +1,123 @@
 print("🚀 chatbot.py started")
 
 import os
-import re
 from dotenv import load_dotenv
 from groq import Groq
 from pypdf import PdfReader
-from collections import defaultdict, deque
-
-import speech_recognition as sr
-import pyttsx3
-
-# ==============================
-# Config
-# ==============================
-PDF_PATH = "data/sample_statements.pdf"
-MAX_CHARS = 4500
-MAX_MEMORY_TURNS = 6
-USE_VOICE = False  # Codespaces safe   # 🔊 Toggle voice on/off
+from collections import deque
 
 # ==============================
 # Load environment variables
 # ==============================
 load_dotenv()
+
 API_KEY = os.getenv("GROQ_API_KEY")
 MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 if not API_KEY:
-    raise ValueError("❌ GROQ_API_KEY not found")
+    raise ValueError("❌ GROQ_API_KEY not found in .env")
 
 client = Groq(api_key=API_KEY)
 
 # ==============================
-# Voice setup
+# Config
 # ==============================
-recognizer = sr.Recognizer()
-tts_engine = pyttsx3.init()
-tts_engine.setProperty("rate", 175)
-
-def listen():
-    """Capture voice input"""
-    with sr.Microphone() as source:
-        print("🎤 Listening...")
-        recognizer.adjust_for_ambient_noise(source, duration=0.5)
-        try:
-            audio = recognizer.listen(source, timeout=5, phrase_time_limit=8)
-        except sr.WaitTimeoutError:
-            return ""
-
-    try:
-        text = recognizer.recognize_google(audio)
-        print(f"🗣️ You said: {text}")
-        return text
-    except sr.UnknownValueError:
-        print("❌ Could not understand audio")
-        return ""
-    except sr.RequestError:
-        print("❌ Speech service unavailable")
-        return ""
-
-def speak(text):
-    """Convert text to speech"""
-    tts_engine.say(text)
-    tts_engine.runAndWait()
+PDF_PATH = "data/sample_statements.pdf"
+MAX_PDF_CHARS = 4000        # Prevent OOM
+MAX_RESPONSE_TOKENS = 300   # Safe limit
 
 # ==============================
-# Chat memory
+# Conversation memory (SHORT TERM)
 # ==============================
-chat_memory = deque(maxlen=MAX_MEMORY_TURNS)
+chat_memory = deque(maxlen=6)  # stores last 3 user-bot turns
 
 # ==============================
 # Read PDF safely
 # ==============================
 def read_pdf(path):
-    reader = PdfReader(path)
-    text = ""
+    try:
+        reader = PdfReader(path)
+        text = ""
 
-    for page in reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text + "\n"
-        if len(text) > MAX_CHARS:
-            break
+        for page in reader.pages:
+            extracted = page.extract_text()
+            if extracted:
+                text += extracted + "\n"
 
-    print(f"📄 PDF loaded ({len(text)} chars)")
-    return text.strip()
+            if len(text) >= MAX_PDF_CHARS:
+                break  # 🚨 critical safety
 
-# ==============================
-# Extract monthly amounts
-# ==============================
-def extract_monthly_amounts(pdf_text):
-    month_totals = defaultdict(float)
+        print(f"📄 PDF loaded ({len(text)} characters)")
+        return text.strip()
 
-    pattern = re.compile(
-        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*.*?([0-9,]+\.\d{2})",
-        re.IGNORECASE
-    )
-
-    for month, amount in pattern.findall(pdf_text):
-        month_totals[month.capitalize()] += float(amount.replace(",", ""))
-
-    return dict(month_totals)
+    except Exception as e:
+        print("❌ Failed to read PDF:", e)
+        return ""
 
 # ==============================
 # Generate AI response
 # ==============================
-def generate_response(user_input, pdf_text, monthly_amounts):
-    memory = "\n".join(chat_memory)
-
-    totals = "\n".join(f"{m}: {v:.2f}" for m, v in monthly_amounts.items())
+def generate_response(user_input, pdf_text):
+    memory_context = "\n".join(chat_memory)
 
     prompt = f"""
 You are a smart personal finance assistant.
 
-Monthly totals (REAL, extracted):
-{totals}
-
 Conversation memory:
-{memory}
+{memory_context}
+
+Below is a PARTIAL bank statement extracted from a PDF.
+Do NOT hallucinate numbers. Use trends, categories, and logic.
+
+PDF CONTENT:
+{pdf_text}
 
 User question:
 {user_input}
 
-Give concise, practical advice (max 5 lines).
+Rules:
+- Use numbers ONLY if clearly visible in PDF
+- Prefer trends, patterns, categories
+- Max 5 concise lines
 """
 
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=300
+        max_tokens=MAX_RESPONSE_TOKENS
     )
 
-    reply = response.choices[0].message.content
-
-    chat_memory.append(f"User: {user_input}")
-    chat_memory.append(f"Assistant: {reply}")
-
-    return reply
+    return response.choices[0].message.content.strip()
 
 # ==============================
-# Main loop
+# Main chatbot loop
 # ==============================
 if __name__ == "__main__":
-    print("💰 Voice-enabled Finance Chatbot")
-    print("Say 'exit' or type 'exit' to quit\n")
+    print("✅ MAIN BLOCK RUNNING")
+    print("💰 Smart Personal Finance Chatbot (PDF + Memory)")
+    print("Type 'exit' to quit\n")
 
     pdf_text = read_pdf(PDF_PATH)
-    monthly_amounts = extract_monthly_amounts(pdf_text)
+
+    if not pdf_text:
+        print("❌ No PDF content loaded. Exiting.")
+        exit(1)
 
     while True:
-        if USE_VOICE:
-            user_input = listen()
-            if not user_input:
-                continue
-        else:
-            user_input = input("You: ")
+        user_input = input("You: ").strip()
 
         if user_input.lower() in ("exit", "quit"):
-            speak("Goodbye!")
+            print("👋 Goodbye!")
             break
 
         try:
-            answer = generate_response(user_input, pdf_text, monthly_amounts)
+            answer = generate_response(user_input, pdf_text)
+
+            # 🧠 update memory
+            chat_memory.append(f"User: {user_input}")
+            chat_memory.append(f"Assistant: {answer}")
+
             print("Bot:", answer)
-            if USE_VOICE:
-                speak(answer)
+
         except Exception as e:
             print("❌ Error:", e)
-            speak("Sorry, something went wrong.")
