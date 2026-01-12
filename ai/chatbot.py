@@ -4,7 +4,6 @@ import os
 from dotenv import load_dotenv
 from groq import Groq
 from pypdf import PdfReader
-from collections import deque
 
 # ==============================
 # Load environment variables
@@ -19,17 +18,8 @@ if not API_KEY:
 
 client = Groq(api_key=API_KEY)
 
-# ==============================
-# Config
-# ==============================
 PDF_PATH = "data/sample_statements.pdf"
-MAX_PDF_CHARS = 4000        # Prevent OOM
-MAX_RESPONSE_TOKENS = 300   # Safe limit
-
-# ==============================
-# Conversation memory (SHORT TERM)
-# ==============================
-chat_memory = deque(maxlen=6)  # stores last 3 user-bot turns
+MAX_CHARS = 4000  # 🚨 prevent memory kill
 
 # ==============================
 # Read PDF safely
@@ -40,12 +30,10 @@ def read_pdf(path):
         text = ""
 
         for page in reader.pages:
-            extracted = page.extract_text()
-            if extracted:
-                text += extracted + "\n"
+            text += page.extract_text() + "\n"
 
-            if len(text) >= MAX_PDF_CHARS:
-                break  # 🚨 critical safety
+            if len(text) > MAX_CHARS:
+                break  # 🚨 VERY IMPORTANT
 
         print(f"📄 PDF loaded ({len(text)} characters)")
         return text.strip()
@@ -58,16 +46,11 @@ def read_pdf(path):
 # Generate AI response
 # ==============================
 def generate_response(user_input, pdf_text):
-    memory_context = "\n".join(chat_memory)
-
     prompt = f"""
 You are a smart personal finance assistant.
 
-Conversation memory:
-{memory_context}
-
 Below is a PARTIAL bank statement extracted from a PDF.
-Do NOT hallucinate numbers. Use trends, categories, and logic.
+Summarize and infer insights — do NOT hallucinate numbers.
 
 PDF CONTENT:
 {pdf_text}
@@ -75,26 +58,23 @@ PDF CONTENT:
 User question:
 {user_input}
 
-Rules:
-- Use numbers ONLY if clearly visible in PDF
-- Prefer trends, patterns, categories
-- Max 5 concise lines
+Give practical financial advice (max 5 lines).
 """
 
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=MAX_RESPONSE_TOKENS
+        max_tokens=300
     )
 
-    return response.choices[0].message.content.strip()
+    return response.choices[0].message.content
 
 # ==============================
 # Main chatbot loop
 # ==============================
 if __name__ == "__main__":
     print("✅ MAIN BLOCK RUNNING")
-    print("💰 Smart Personal Finance Chatbot (PDF + Memory)")
+    print("💰 Personal Finance Chatbot (PDF Based)")
     print("Type 'exit' to quit\n")
 
     pdf_text = read_pdf(PDF_PATH)
@@ -104,7 +84,7 @@ if __name__ == "__main__":
         exit(1)
 
     while True:
-        user_input = input("You: ").strip()
+        user_input = input("You: ")
 
         if user_input.lower() in ("exit", "quit"):
             print("👋 Goodbye!")
@@ -112,12 +92,6 @@ if __name__ == "__main__":
 
         try:
             answer = generate_response(user_input, pdf_text)
-
-            # 🧠 update memory
-            chat_memory.append(f"User: {user_input}")
-            chat_memory.append(f"Assistant: {answer}")
-
             print("Bot:", answer)
-
         except Exception as e:
             print("❌ Error:", e)
